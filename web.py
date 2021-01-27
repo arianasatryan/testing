@@ -10,30 +10,32 @@ from search.prakash import get_sources_using_prakash
 
 
 def upload_similar_docs_from_web(fragments: List[Fragment], **params):
-    fragment_urls = get_urls(fragments, params)
+    fragments_url_snippet_pairs = get_url_snippet_pairs(fragments, params)
 
-    for url in set(itertools.chain.from_iterable(fragment_urls)):
+    for url, snippet in set(itertools.chain.from_iterable(fragments_url_snippet_pairs)):
         doc = Document(
             id=None,
             uri=url,
+            snippet=snippet,
             date_added=datetime.datetime.now(),
             user_login=params["user_login"])
         Documents.add_document(doc)
 
 
 def get_candidate_fragments_from_web(fragments: List[Fragment], **params) -> List[FragmentReport]:
-    fragments_urls = get_urls(fragments, params)
+    fragments_url_snippet_pairs = get_url_snippet_pairs(fragments, params)
     # create reports
     reports = []
     url_doc = {}
     user_login, _ = get_current_user()
     for i in range(len(fragments)):
         similar_fragments = []
-        for url in fragments_urls[i]:
+        for url, snippet in fragments_url_snippet_pairs[i]:
             if url not in url_doc.keys():
                 doc = Document(
                     id=None,
                     uri=url,
+                    snippet=snippet,
                     date_added=datetime.datetime.now(),
                     user_login=user_login)
                 url_doc[url] = doc
@@ -43,7 +45,7 @@ def get_candidate_fragments_from_web(fragments: List[Fragment], **params) -> Lis
     return reports
 
 
-def get_urls(fragments: List[Fragment], params) -> List[List[str]]:
+def get_url_snippet_pairs(fragments: List[Fragment], params) -> List[List[str,str]]:
     # get fragment related urls by specified key phrase extraction algorithm
     fragments = [fragment.text for fragment in fragments]
     web_search_params = params["WEB_SEARCH"]

@@ -15,6 +15,6 @@ def google_search(search_term, **kwargs):
         print(err)
         return []
     if 'items' in response.keys():
-        resulted_links = [item['link'] for item in response['items']]
-        return resulted_links
+        resulted_link_snippet_pairs = [(item['link'], item['snippet']) for item in response['items']]
+        return resulted_link_snippet_pairs
     return []

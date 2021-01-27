@@ -6,23 +6,23 @@ from utils.preprocessing import remove_stopwords
 from search.query_searching import search_for_query
 
 
-def get_sources_using_prakash(fragments: List[str], web_search_params) -> List[str]:
+def get_sources_using_prakash(fragments: List[str], web_search_params) -> List[str, str]:
     keywords_by_chunks, chunks_lvl_imp_words, chunk_of_fragment = extract_key_phrases(fragments)
-    chunks_urls = get_pages(keywords_by_chunks, chunks_lvl_imp_words, web_search_params)
-    # do counting for some kind of ranking and select top_n urls
-    url_count = Counter(url for chunk_urls in chunks_urls for url in chunk_urls)
-    top_n_urls = [link for link, count in url_count.most_common(n=web_search_params["top_n"])]
-    # selecting only top n urls for all chunks
-    for i in range(len(chunks_urls)):
-        chunks_urls[i] = [url for url in chunks_urls[i] if url in top_n_urls]
-    # getting fragment urls from related chunk urls
-    fragments_urls = []
+    chunks_url_snippet_pairs = get_url_snippet_pairs(keywords_by_chunks, chunks_lvl_imp_words, web_search_params)
+    # do counting for some kind of ranking and select top_n (url,snippet) pairs
+    url_snippet_pair_count = Counter(pair for chunk_url_snippet_pairs in chunks_url_snippet_pairs for pair in chunk_url_snippet_pairs)
+    top_n_pairs = [pair for pair, count in url_snippet_pair_count.most_common(n=web_search_params["top_n"])]
+    # selecting only top n (url,snippet) pairs for all chunks
+    for i in range(len(chunks_url_snippet_pairs)):
+        chunks_url_snippet_pairs[i] = [pair for pair in chunks_url_snippet_pairs[i] if pair in top_n_pairs]
+    # getting fragment (url,snippet) pairs from related chunk (url,snippet) pairs
+    fragments_url_snippet_pairs = []
     for i in range(len(fragments)):
         if chunk_of_fragment[i] is not None:
-            fragments_urls.append(chunks_urls[chunk_of_fragment[i]])
+            fragments_url_snippet_pairs.append(chunks_url_snippet_pairs[chunk_of_fragment[i]])
         else:
-            fragments_urls.append([])
-    return fragments_urls
+            fragments_url_snippet_pairs.append([])
+    return fragments_url_snippet_pairs
 
 
 def extract_key_phrases(fragments: List[str]) -> Tuple[List[List[List[str]]], List[List[str]], Dict[int, int]]:
@@ -41,14 +41,14 @@ def extract_key_phrases(fragments: List[str]) -> Tuple[List[List[List[str]]], Li
     return keywords_by_chunks, chunks_lvl_imp_words, chunk_of_fragment
 
 
-def get_pages(keywords_by_chunks: List[List[List[str]]], chunks_lvl_imp_words: List[List[str]], params) \
-        -> List[List[str]]:
-    chunks_relevant_urls = []
+def get_url_snippet_pairs(keywords_by_chunks: List[List[List[str]]], chunks_lvl_imp_words: List[List[str]], params) \
+        -> List[List[str, str]]:
+    chunks_relevant_url_snippet_pairs = []
     for i in range(len(keywords_by_chunks)):
         queries = get_queries(chunk_keywords=keywords_by_chunks[i], chunk_lvl_imp_words=chunks_lvl_imp_words[i])
-        resulted_urls = conditional_search(queries, params)
-        chunks_relevant_urls.append(resulted_urls)
-    return chunks_relevant_urls
+        resulted_url_snippet_pairs = conditional_search(queries, params)
+        chunks_relevant_url_snippet_pairs.append(resulted_url_snippet_pairs)
+    return chunks_relevant_url_snippet_pairs
 
 
 def get_chunks(fragments: List[str]) -> Tuple[List[str], Dict[int, int]]:
@@ -170,7 +170,7 @@ def get_queries(chunk_keywords: List[List[str]], chunk_lvl_imp_words: List[str])
     return queries
 
 
-def conditional_search(queries: List[List[str]], kwargs) -> List[str]:
+def conditional_search(queries: List[List[str]], kwargs) -> List[str, str]:
     max_requests_per_chunk = kwargs['max_requests_per_chunk']
     required_results_per_chunk = kwargs['required_results_per_chunk'] \
         if 'required_results_per_chunk' in kwargs.keys() else None
@@ -179,11 +179,12 @@ def conditional_search(queries: List[List[str]], kwargs) -> List[str]:
     # the third query is submitted if the first one is empty or returns no result
     # the forth query is submitted if the second one is empty or dropped
     # all resulted links for chunks are counted and the top n=required_results_per_chunk is return
-    results = {}
+    resulted_link_snippet_pairs = {}
     query_is_empty_or_dropped = [len(query) == 0 for query in queries]
     counter = Counter()
     for i in range(4):
-        if not results.keys() or not max_requests_per_chunk or len(results.keys()) < max_requests_per_chunk:
+        if not resulted_link_snippet_pairs.keys() or not max_requests_per_chunk or \
+                len(resulted_link_snippet_pairs.keys()) < max_requests_per_chunk:
             if not query_is_empty_or_dropped[i]:
                 for j in range(i - 1):
                     dif = [word for word in queries[i] + queries[j] if word not in queries[i] or i not in queries[j]]
@@ -192,16 +193,16 @@ def conditional_search(queries: List[List[str]], kwargs) -> List[str]:
                         break
             if not query_is_empty_or_dropped[i]:
                 if i == 0:
-                    results[i] = search_for_query(queries[i], kwargs)
-                    query_is_empty_or_dropped[i] = not results[i]
+                    resulted_link_snippet_pairs[i] = search_for_query(queries[i], kwargs)
+                    query_is_empty_or_dropped[i] = not resulted_link_snippet_pairs[i]
                 elif i == 1:
-                    results[i] = search_for_query(queries[i], kwargs)
+                    resulted_link_snippet_pairs[i] = search_for_query(queries[i], kwargs)
                 elif i == 2 and query_is_empty_or_dropped[0]:
-                    results[i] = search_for_query(queries[i], kwargs)
+                    resulted_link_snippet_pairs[i] = search_for_query(queries[i], kwargs)
                 elif i == 3 and query_is_empty_or_dropped[1]:
-                    results[i] = search_for_query(queries[i], kwargs)
-            if i in results.keys():
-                counter.update(results[i])
+                    resulted_link_snippet_pairs[i] = search_for_query(queries[i], kwargs)
+            if i in resulted_link_snippet_pairs.keys():
+                counter.update(resulted_link_snippet_pairs[i])
     required_results_per_chunk = len(counter) if not required_results_per_chunk else required_results_per_chunk
-    merged_results_list = [url for url, count in counter.most_common(n=required_results_per_chunk)]
-    return merged_results_list
+    merged_resulted_link_snippet_pairs_list = [pair for pair, count in counter.most_common(n=required_results_per_chunk)]
+    return merged_resulted_link_snippet_pairs_list
